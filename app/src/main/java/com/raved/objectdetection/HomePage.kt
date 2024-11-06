@@ -32,8 +32,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -50,10 +52,14 @@ import java.util.Objects
 fun HomePage() {
     val context = LocalContext.current
     val file = context.createImageFile()
-    val uri = FileProvider.getUriForFile(
-        Objects.requireNonNull(context),
-        context.packageName + ".provider", file
-    )
+    val uri = if (LocalInspectionMode.current) {
+        Uri.parse("file://dummy/path")
+    } else {
+        FileProvider.getUriForFile(
+            Objects.requireNonNull(context),
+            context.packageName + ".provider", file
+        )
+    }
 
     var capturedImageUri by remember { mutableStateOf<Uri>(Uri.EMPTY) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
@@ -83,8 +89,8 @@ fun HomePage() {
     if (showAlert) {
         AlertDialog(
             onDismissRequest = { showAlert = false },
-            title = { Text(text = "Quit") },
-            text = { Text("Are you sure?") },
+            title = { Text(text = "Confirm Exit") },
+            text = { Text("Are you sure you want to exit?") },
             shape = RectangleShape,
             confirmButton = {
                 Button(
@@ -92,7 +98,7 @@ fun HomePage() {
                     shape = RectangleShape,
                     colors = ButtonDefaults.buttonColors(colorResource(id = R.color.red))
                 ) {
-                    Text("OK")
+                    Text("Exit")
                 }
             },
             dismissButton = {
@@ -199,7 +205,7 @@ fun HomePage() {
                         shape = RectangleShape,
                         colors = ButtonDefaults.buttonColors(colorResource(id = R.color.red))
                     ) {
-                        Text(text = "Quit", color = Color.White)
+                        Text(text = "Exit", color = Color.White)
                     }
                 }
             }
@@ -217,4 +223,10 @@ fun Context.createImageFile(): File {
     )
 
     return image
+}
+
+@Preview
+@Composable
+fun HomePagePreview() {
+    HomePage()
 }
