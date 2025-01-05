@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,6 +43,19 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil3.compose.rememberAsyncImagePainter
 import com.raved.objectdetection.ui.theme.ObjectDetectionTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.ResponseBody
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -80,7 +94,7 @@ fun HomePage() {
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
-        imageFile: Uri? ->
+            imageFile: Uri? ->
         imageUri = imageFile
     }
 
@@ -200,6 +214,18 @@ fun HomePage() {
                         Text(text = "Import From Gallery", color = Color.White)
                     }
                     Button(
+                        onClick = {
+                            imageUri?.let {
+                                uploadImage(context, it)
+                            } ?: Toast.makeText(context, "No image selected", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
+                    ) {
+                        Text(text = "Upload Image", color = Color.White)
+                    }
+                    Button(
                         onClick = { showAlert = true },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RectangleShape,
@@ -223,6 +249,66 @@ fun Context.createImageFile(): File {
     )
 
     return image
+}
+fun getFileFromUri(context: Context, uri: Uri): File? {
+    return try {
+        val contentResolver = context.contentResolver
+        val tempFile = File.createTempFile("temp_image", ".jpg", context.cacheDir)
+        contentResolver.openInputStream(uri)?.use { inputStream ->
+            tempFile.outputStream().use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+        }
+        tempFile
+    } catch (e: Exception) {
+        Log.e("getFileFromUri", "Error resolving file: ${e.message}")
+        null
+    }
+}
+
+fun uploadImage(context: Context, imageUri: Uri) {
+    val file = getFileFromUri(context, imageUri) ?: run {
+        Toast.makeText(context, "Failed to resolve file", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    if (!file.exists()) {
+        Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val requestBody = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+    val body = MultipartBody.Part.createFormData("image", file.name, requestBody)
+
+    val retrofit = Retrofit.Builder()
+        .baseUrl("http://192.168.43.168:8080/api/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    val service = retrofit.create(ApiService::class.java)
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val response = service.uploadImage(body)
+            withContext(Dispatchers.Main) {
+                if (response.isSuccessful) {
+                    Toast.makeText(context, "Image uploaded successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to upload image: ${response.code()}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+interface ApiService {
+    @Multipart
+    @POST("detect/")
+    suspend fun uploadImage(@Part image: MultipartBody.Part): retrofit2.Response<ResponseBody>
 }
 
 @Preview
