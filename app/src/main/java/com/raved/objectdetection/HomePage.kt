@@ -51,6 +51,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.ResponseBody
+import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Multipart
@@ -77,9 +78,15 @@ fun HomePage() {
 
     var capturedImageUri by remember { mutableStateOf<Uri>(Uri.EMPTY) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var detectedClass by remember { mutableStateOf<String?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) {
-        capturedImageUri = uri
+        if (it) {
+            capturedImageUri = uri
+            uploadImage(context, capturedImageUri) { result ->
+                detectedClass = result
+            }
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -96,6 +103,11 @@ fun HomePage() {
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
             imageFile: Uri? ->
         imageUri = imageFile
+        imageUri?.let {
+            uploadImage(context, it) { result ->
+                detectedClass = result
+            }
+        }
     }
 
     // handle alert
@@ -149,7 +161,7 @@ fun HomePage() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Object Detection",
+                            text = "Deteksi Objek",
                             modifier = Modifier.padding(16.dp),
                             color = Color.White,
                             fontSize = 25.sp,
@@ -168,11 +180,21 @@ fun HomePage() {
                     // display image
                     if (capturedImageUri.path?.isNotEmpty() == true || imageUri != null) {
                         val displayUri = imageUri ?: capturedImageUri
-                        Image(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentDescription = "Poster Image",
-                            painter = rememberAsyncImagePainter(displayUri)
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Image(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentDescription = "Poster Image",
+                                painter = rememberAsyncImagePainter(displayUri)
+                            )
+                            detectedClass?.let {
+                                Text(
+                                    text = "Kelas Terdeteksi: $it",
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        }
                     } else {
                         Image(
                             modifier = Modifier.fillMaxWidth(),
@@ -201,7 +223,7 @@ fun HomePage() {
                         shape = RectangleShape,
                         colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
                     ) {
-                        Text(text = "Take Picture", color = Color.White)
+                        Text(text = "Ambil Lewat Kamera", color = Color.White)
                     }
                     Button(
                         onClick = {
@@ -211,19 +233,7 @@ fun HomePage() {
                         shape = RectangleShape,
                         colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
                     ) {
-                        Text(text = "Import From Gallery", color = Color.White)
-                    }
-                    Button(
-                        onClick = {
-                            imageUri?.let {
-                                uploadImage(context, it)
-                            } ?: Toast.makeText(context, "No image selected", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
-                    ) {
-                        Text(text = "Upload Image", color = Color.White)
+                        Text(text = "Ambil Dari Galeri", color = Color.White)
                     }
                     Button(
                         onClick = { showAlert = true },
@@ -234,6 +244,54 @@ fun HomePage() {
                         Text(text = "Exit", color = Color.White)
                     }
                 }
+            }
+        }
+    }
+}
+
+fun uploadImage(context: Context, imageUri: Uri, onResult: (String) -> Unit) {
+    val file = getFileFromUri(context, imageUri) ?: run {
+        Toast.makeText(context, "Failed to resolve file", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    if (!file.exists()) {
+        Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val requestBody = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+    val body = MultipartBody.Part.createFormData("image", file.name, requestBody)
+
+    val retrofit = Retrofit.Builder()
+        .baseUrl("http://192.168.18.81:8080/api/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    val service = retrofit.create(ApiService::class.java)
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val response = service.uploadImage(body)
+            withContext(Dispatchers.Main) {
+                if (response.isSuccessful) {
+                    val responseBody = response.body()?.string() ?: "{}"
+                    val jsonResponse = JSONObject(responseBody)
+                    val detections = jsonResponse.optJSONArray("detections")
+                    val detectedClass = if (detections != null && detections.length() > 0) {
+                        val firstDetection = detections.getJSONObject(0)
+                        firstDetection.optString("class", "Unknown")
+                    } else {
+                        "Tidak Diketahui"
+                    }
+                    onResult(detectedClass)
+                } else {
+                    Toast.makeText(context, "Failed to upload image: ${response.code()}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -263,45 +321,6 @@ fun getFileFromUri(context: Context, uri: Uri): File? {
     } catch (e: Exception) {
         Log.e("getFileFromUri", "Error resolving file: ${e.message}")
         null
-    }
-}
-
-fun uploadImage(context: Context, imageUri: Uri) {
-    val file = getFileFromUri(context, imageUri) ?: run {
-        Toast.makeText(context, "Failed to resolve file", Toast.LENGTH_SHORT).show()
-        return
-    }
-
-    if (!file.exists()) {
-        Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
-        return
-    }
-
-    val requestBody = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-    val body = MultipartBody.Part.createFormData("image", file.name, requestBody)
-
-    val retrofit = Retrofit.Builder()
-        .baseUrl("http://192.168.43.168:8080/api/")
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-
-    val service = retrofit.create(ApiService::class.java)
-
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val response = service.uploadImage(body)
-            withContext(Dispatchers.Main) {
-                if (response.isSuccessful) {
-                    Toast.makeText(context, "Image uploaded successfully", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "Failed to upload image: ${response.code()}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 }
 
