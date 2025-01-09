@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -161,12 +162,22 @@ fun HomePage() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Deteksi Objek",
+                            text = "Object Detection",
                             modifier = Modifier.padding(16.dp),
                             color = Color.White,
                             fontSize = 25.sp,
                         )
                     }
+                }
+                Button(
+                    onClick = { showAlert = true },
+                    modifier = Modifier
+                        .width(100.dp)
+                        .padding(5.dp),
+                    shape = RectangleShape,
+                    colors = ButtonDefaults.buttonColors(colorResource(id = R.color.red))
+                ) {
+                    Text(text = "Back", color = Color.White)
                 }
 
                 // poster image
@@ -182,13 +193,15 @@ fun HomePage() {
                         val displayUri = imageUri ?: capturedImageUri
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Image(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .width(200.dp)
+                                    .height(300.dp),
                                 contentDescription = "Poster Image",
                                 painter = rememberAsyncImagePainter(displayUri)
                             )
                             detectedClass?.let {
                                 Text(
-                                    text = "Kelas Terdeteksi: $it",
+                                    text = "Detected: $it",
                                     color = Color.White,
                                     fontSize = 20.sp,
                                     modifier = Modifier.padding(top = 8.dp)
@@ -223,7 +236,7 @@ fun HomePage() {
                         shape = RectangleShape,
                         colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
                     ) {
-                        Text(text = "Ambil Lewat Kamera", color = Color.White)
+                        Text(text = "Camera", color = Color.White)
                     }
                     Button(
                         onClick = {
@@ -233,15 +246,7 @@ fun HomePage() {
                         shape = RectangleShape,
                         colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
                     ) {
-                        Text(text = "Ambil Dari Galeri", color = Color.White)
-                    }
-                    Button(
-                        onClick = { showAlert = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RectangleShape,
-                        colors = ButtonDefaults.buttonColors(colorResource(id = R.color.red))
-                    ) {
-                        Text(text = "Exit", color = Color.White)
+                        Text(text = "Gallery", color = Color.White)
                     }
                 }
             }
@@ -264,7 +269,7 @@ fun uploadImage(context: Context, imageUri: Uri, onResult: (String) -> Unit) {
     val body = MultipartBody.Part.createFormData("image", file.name, requestBody)
 
     val retrofit = Retrofit.Builder()
-        .baseUrl("http://192.168.18.81:8080/api/")
+        .baseUrl("http://192.168.43.168:8080/api/")
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
@@ -282,7 +287,7 @@ fun uploadImage(context: Context, imageUri: Uri, onResult: (String) -> Unit) {
                         val firstDetection = detections.getJSONObject(0)
                         firstDetection.optString("class", "Unknown")
                     } else {
-                        "Tidak Diketahui"
+                        "Unknown"
                     }
                     onResult(detectedClass)
                 } else {
