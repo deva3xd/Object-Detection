@@ -10,8 +10,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,8 +24,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +69,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.Objects
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomePage() {
     val context = LocalContext.current
@@ -80,6 +86,8 @@ fun HomePage() {
     var capturedImageUri by remember { mutableStateOf<Uri>(Uri.EMPTY) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var detectedClass by remember { mutableStateOf<String?>(null) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) {
         if (it) {
@@ -107,6 +115,7 @@ fun HomePage() {
         imageUri?.let {
             uploadImage(context, it) { result ->
                 detectedClass = result
+                showBottomSheet = true
             }
         }
     }
@@ -153,7 +162,7 @@ fun HomePage() {
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .fillMaxWidth()
-                        .height(100.dp),
+                        .height(80.dp),
                     shape = RectangleShape,
                     colors = CardDefaults.cardColors(colorResource(id = R.color.black))
                 ) {
@@ -163,22 +172,42 @@ fun HomePage() {
                     ) {
                         Text(
                             text = "Object Detection",
-                            modifier = Modifier.padding(16.dp),
                             color = Color.White,
-                            fontSize = 25.sp,
+                            fontSize = 22.sp,
                         )
                     }
                 }
-                Button(
-                    onClick = { showAlert = true },
+
+                Row(
                     modifier = Modifier
-                        .width(100.dp)
-                        .padding(5.dp),
-                    shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(colorResource(id = R.color.red))
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Back", color = Color.White)
+                    Button(
+                        onClick = { showAlert = true },
+                        modifier = Modifier
+                            .width(100.dp)
+                            .padding(5.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(colorResource(id = R.color.red))
+                    ) {
+                        Text(text = "Back", color = Color.White)
+                    }
+                    Button(
+                        onClick = { showBottomSheet = true },
+                        modifier = Modifier
+                            .width(100.dp)
+                            .padding(5.dp),
+                        shape = RectangleShape,
+                        colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black)),
+                        enabled = detectedClass != null
+                    ) {
+                        Text(text = "Result", color = Color.White)
+                    }
                 }
+
 
                 // poster image
                 Box(
@@ -194,19 +223,11 @@ fun HomePage() {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Image(
                                 modifier = Modifier
-                                    .width(200.dp)
-                                    .height(300.dp),
+                                    .width(300.dp)
+                                    .height(400.dp),
                                 contentDescription = "Poster Image",
                                 painter = rememberAsyncImagePainter(displayUri)
                             )
-                            detectedClass?.let {
-                                Text(
-                                    text = "Detected: $it",
-                                    color = Color.White,
-                                    fontSize = 20.sp,
-                                    modifier = Modifier.padding(top = 8.dp)
-                                )
-                            }
                         }
                     } else {
                         Image(
@@ -247,6 +268,35 @@ fun HomePage() {
                         colors = ButtonDefaults.buttonColors(colorResource(id = R.color.black))
                     ) {
                         Text(text = "Gallery", color = Color.White)
+                    }
+                }
+            }
+
+            // modal Bottom Sheet
+            if (showBottomSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showBottomSheet = false },
+                    sheetState = bottomSheetState
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        detectedClass?.let {
+                            Text(
+                                text = "Detected: $it",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            Text(
+                                text = "Recommendation:",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                modifier = Modifier.padding(top = 4.dp) // Slight padding for spacing
+                            )
+                        }
                     }
                 }
             }
@@ -313,6 +363,7 @@ fun Context.createImageFile(): File {
 
     return image
 }
+
 fun getFileFromUri(context: Context, uri: Uri): File? {
     return try {
         val contentResolver = context.contentResolver
